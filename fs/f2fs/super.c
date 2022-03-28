@@ -2692,16 +2692,9 @@ static int f2fs_quota_sync_file(struct f2fs_sb_info *sbi, int type)
 	struct address_space *mapping = dqopt->files[type]->i_mapping;
 	int ret = 0;
 
-	/*
-	 * do_quotactl
-	 *  f2fs_quota_sync
-	 *  down_read(quota_sem)
-	 *  dquot_writeback_dquots()
-	 *  f2fs_dquot_commit
-	 *                            block_operation
-	 *                            down_read(quota_sem)
-	 */
-	f2fs_lock_op(sbi);
+	ret = dquot_writeback_dquots(sbi->sb, type);
+	if (ret)
+		goto out;
 
 	ret = filemap_fdatawrite(mapping);
 	if (ret)
@@ -2722,9 +2715,8 @@ out:
 
 int f2fs_quota_sync(struct super_block *sb, int type)
 {
-	struct f2fs_sb_info *sbi = F2FS_SB(sb);
-	struct quota_info *dqopt = sb_dqopt(sb);
-	int cnt;
+	struct quota_info *dqopt = sb_dqopt(sbi->sb);
+	struct address_space *mapping = dqopt->files[type]->i_mapping;
 	int ret = 0;
 
 	/*
@@ -2736,26 +2728,26 @@ int f2fs_quota_sync(struct super_block *sb, int type)
 		if (type != -1 && cnt != type)
 			continue;
 
-		if (!sb_has_quota_active(sb, cnt))
-			continue;
+		if (!sb_has_quota_active(sb, type))
+			return 0;
 
 		inode_lock(dqopt->files[cnt]);
 
 		/*
 		 * do_quotactl
 		 *  f2fs_quota_sync
-		 *  f2fs_down_read(quota_sem)
+		 *  down_read(quota_sem)
 		 *  dquot_writeback_dquots()
 		 *  f2fs_dquot_commit
 		 *			      block_operation
-		 *			      f2fs_down_read(quota_sem)
+		 *			      down_read(quota_sem)
 		 */
 		f2fs_lock_op(sbi);
-		f2fs_down_read(&sbi->quota_sem);
+		down_read(&sbi->quota_sem);
 
 		ret = f2fs_quota_sync_file(sbi, cnt);
 
-		f2fs_up_read(&sbi->quota_sem);
+		up_read(&sbi->quota_sem);
 		f2fs_unlock_op(sbi);
 
 		inode_unlock(dqopt->files[cnt]);
@@ -2763,11 +2755,6 @@ int f2fs_quota_sync(struct super_block *sb, int type)
 		if (ret)
 			break;
 	}
-out:
-	if (ret)
-		set_sbi_flag(F2FS_SB(sb), SBI_QUOTA_NEED_REPAIR);
-	up_read(&sbi->quota_sem);
-	f2fs_unlock_op(sbi);
 	return ret;
 }
 

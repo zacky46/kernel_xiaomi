@@ -2715,8 +2715,9 @@ out:
 
 int f2fs_quota_sync(struct super_block *sb, int type)
 {
-	struct quota_info *dqopt = sb_dqopt(sbi->sb);
-	struct address_space *mapping = dqopt->files[type]->i_mapping;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	struct quota_info *dqopt = sb_dqopt(sb);
+	int cnt;
 	int ret = 0;
 
 	/*
@@ -2728,26 +2729,26 @@ int f2fs_quota_sync(struct super_block *sb, int type)
 		if (type != -1 && cnt != type)
 			continue;
 
-		if (!sb_has_quota_active(sb, type))
-			return 0;
+		if (!sb_has_quota_active(sb, cnt))
+			continue;
 
 		inode_lock(dqopt->files[cnt]);
 
 		/*
 		 * do_quotactl
 		 *  f2fs_quota_sync
-		 *  down_read(quota_sem)
+		 *  f2fs_down_read(quota_sem)
 		 *  dquot_writeback_dquots()
 		 *  f2fs_dquot_commit
 		 *			      block_operation
-		 *			      down_read(quota_sem)
+		 *			      f2fs_down_read(quota_sem)
 		 */
 		f2fs_lock_op(sbi);
-		down_read(&sbi->quota_sem);
+		f2fs_down_read(&sbi->quota_sem);
 
 		ret = f2fs_quota_sync_file(sbi, cnt);
 
-		up_read(&sbi->quota_sem);
+		f2fs_up_read(&sbi->quota_sem);
 		f2fs_unlock_op(sbi);
 
 		inode_unlock(dqopt->files[cnt]);
@@ -4136,8 +4137,8 @@ try_onemore:
 		}
 	}
 
-	init_rwsem(&sbi->cp_rwsem);
-	init_rwsem(&sbi->quota_sem);
+	init_f2fs_rwsem(&sbi->cp_rwsem);
+	init_f2fs_rwsem(&sbi->quota_sem);
 	init_waitqueue_head(&sbi->cp_wait);
 	init_sb_info(sbi);
 
@@ -4483,6 +4484,7 @@ free_bio_info:
 
 #ifdef CONFIG_UNICODE
 	utf8_unload(sb->s_encoding);
+	sb->s_encoding = NULL;
 #endif
 free_options:
 #ifdef CONFIG_QUOTA
@@ -4703,4 +4705,3 @@ MODULE_AUTHOR("Samsung Electronics's Praesto Team");
 MODULE_DESCRIPTION("Flash Friendly File System");
 MODULE_LICENSE("GPL");
 MODULE_SOFTDEP("pre: crc32");
-

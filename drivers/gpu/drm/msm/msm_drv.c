@@ -2312,7 +2312,6 @@ static int msm_pdev_remove(struct platform_device *pdev)
 
 static void msm_pdev_shutdown(struct platform_device *pdev)
 {
-<<<<<<< HEAD
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = NULL;
 
@@ -2331,15 +2330,6 @@ static void msm_pdev_shutdown(struct platform_device *pdev)
 
 	/* set this after lastclose to allow kickoff from lastclose */
 	priv->shutdown_in_progress = true;
-=======
-	struct drm_device *drm = platform_get_drvdata(pdev);
-	struct msm_drm_private *priv = drm ? drm->dev_private : NULL;
-
-	if (!priv || !priv->kms)
-		return;
-
-	drm_atomic_helper_shutdown(drm);
->>>>>>> 1e2df294aa3649e5fd6dd5e9b9d8c41c6656c350
 }
 
 static const struct of_device_id dt_match[] = {

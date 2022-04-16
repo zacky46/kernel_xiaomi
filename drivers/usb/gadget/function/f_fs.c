@@ -1396,7 +1396,6 @@ static long ffs_epfile_ioctl(struct file *file, unsigned code,
 		struct usb_endpoint_descriptor desc1, *desc;
 
 		switch (epfile->ffs->gadget->speed) {
-		case USB_SPEED_SUPER_PLUS:
 		case USB_SPEED_SUPER:
 		case USB_SPEED_SUPER_PLUS:
 			desc_idx = 2;
@@ -2079,6 +2078,7 @@ static void ffs_func_eps_disable(struct ffs_function *func)
 	spin_lock_irqsave(&func->ffs->eps_lock, flags);
 	count = func->ffs->eps_count;
 	epfile = func->ffs->epfiles;
+	ffs = func->ffs;
 	ep = func->eps;
 	while (count--) {
 		/* pending requests get nuked */
@@ -3369,7 +3369,7 @@ static int _ffs_func_bind(struct usb_configuration *c,
 	if (likely(super)) {
 		func->function.ss_descriptors = func->function.ssp_descriptors =
 			vla_ptr(vlabuf, d, ss_descs);
-		ss_len = ffs_do_descs(ffs->ss_descs_count,
+		ss_len = ffs_do_descs(ffs, ffs->ss_descs_count,
 				vla_ptr(vlabuf, d, raw_descs) + fs_len + hs_len,
 				d_raw_descs__sz - fs_len - hs_len,
 				__ffs_func_bind_do_descs, func);
@@ -3968,12 +3968,7 @@ static int ffs_acquire_dev(const char *dev_name, struct ffs_data *ffs_data)
 	}
 
 	ffs_dev_unlock();
-<<<<<<< HEAD
-
-	return ffs_dev;
-=======
 	return ret;
->>>>>>> 1e2df294aa3649e5fd6dd5e9b9d8c41c6656c350
 }
 
 static void ffs_release_dev(struct ffs_dev *ffs_dev)

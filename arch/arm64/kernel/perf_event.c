@@ -707,6 +707,7 @@ static inline u32 armv8pmu_update_enabled_ints(u32 value, int idx, int set)
 static inline void armv8pmu_set_enabled_ints(u32 mask) { }
 #endif
 
+
 static void armv8pmu_start(struct arm_pmu *cpu_pmu)
 {
 	unsigned long flags;
@@ -807,11 +808,6 @@ static irqreturn_t armv8pmu_handle_irq(int irq_num, void *dev)
 	 * will not work.
 	 */
 	irq_work_run();
-
-	/*
-	 * Re-enable the PMU interrupts
-	 */
-	armv8pmu_set_enabled_ints(enabled_ints);
 
 	return IRQ_HANDLED;
 }

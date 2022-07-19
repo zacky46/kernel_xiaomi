@@ -224,94 +224,26 @@ static void *ion_dma_buf_kmap(struct dma_buf *dmabuf, unsigned long offset)
 static void ion_dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long offset,
 			       void *ptr)
 {
-	ion_dma_buf_vunmap(dmabuf, NULL);
-}
+	struct ion_buffer *buffer = dmabuf->priv;
 
-static int ion_dup_sg_table(struct sg_table *dst, struct sg_table *src)
-{
-	unsigned int nents = src->nents;
-	struct scatterlist *d, *s;
-
-	if (sg_alloc_table(dst, nents, GFP_KERNEL))
-		return -ENOMEM;
-
-	for (d = dst->sgl, s = src->sgl;
-	     nents > SG_MAX_SINGLE_ALLOC; nents -= SG_MAX_SINGLE_ALLOC - 1,
-	     d = sg_chain_ptr(&d[SG_MAX_SINGLE_ALLOC - 1]),
-	     s = sg_chain_ptr(&s[SG_MAX_SINGLE_ALLOC - 1]))
-		memcpy(d, s, (SG_MAX_SINGLE_ALLOC - 1) * sizeof(*d));
-
-	if (nents)
-		memcpy(d, s, nents * sizeof(*d));
-
-	return 0;
-}
-
-static int ion_dma_buf_attach(struct dma_buf *dmabuf, struct device *dev,
-			      struct dma_buf_attachment *attachment)
-{
-	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
-						 iommu_data);
-	struct ion_dma_buf_attachment *a;
-
-	spin_lock(&buffer->freelist_lock);
-	list_for_each_entry(a, &buffer->map_freelist, list) {
-		if (a->dev == dev) {
-			list_del(&a->list);
-			spin_unlock(&buffer->freelist_lock);
-			attachment->priv = a;
-			return 0;
-		}
-	}
-	spin_unlock(&buffer->freelist_lock);
-
-	a = kmalloc(sizeof(*a), GFP_KERNEL);
-	if (!a)
-		return -ENOMEM;
-
-	if (ion_dup_sg_table(&a->table, buffer->sg_table)) {
-		kfree(a);
-		return -ENOMEM;
+	if (buffer->heap->ops->map_kernel) {
+		mutex_lock(&buffer->lock);
+		ion_buffer_kmap_put(buffer);
+		mutex_unlock(&buffer->lock);
 	}
 
-	a->dev = dev;
-	a->dma_mapped = false;
-	attachment->priv = a;
-	a->next = buffer->attachments;
-	buffer->attachments = a;
-
-	return 0;
-}
-
-static void ion_dma_buf_detach(struct dma_buf *dmabuf,
-			       struct dma_buf_attachment *attachment)
-{
-	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
-						 iommu_data);
-	struct ion_dma_buf_attachment *a = attachment->priv;
-
-	spin_lock(&buffer->freelist_lock);
-	list_add(&a->list, &buffer->map_freelist);
-	spin_unlock(&buffer->freelist_lock);
 }
 
 static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 					enum dma_data_direction dir)
 {
-	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
-						 iommu_data);
+	struct ion_buffer *buffer = dmabuf->priv;
 	struct ion_dma_buf_attachment *a;
 
-	if (!hlos_accessible_buffer(buffer))
-		return -EPERM;
-
-	if (!(buffer->flags & ION_FLAG_CACHED))
-		return 0;
-
-	for (a = buffer->attachments; a; a = a->next) {
-		if (a->dma_mapped)
-			dma_sync_sg_for_cpu(a->dev, a->table.sgl,
-					    a->table.nents, dir);
+	mutex_lock(&buffer->lock);
+	list_for_each_entry(a, &buffer->attachments, list) {
+		dma_sync_sg_for_cpu(a->dev, a->table->sgl, a->table->nents,
+				    direction);
 	}
 
 	return 0;
@@ -324,16 +256,10 @@ static int ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 						 iommu_data);
 	struct ion_dma_buf_attachment *a;
 
-	if (!hlos_accessible_buffer(buffer))
-		return -EPERM;
-
-	if (!(buffer->flags & ION_FLAG_CACHED))
-		return 0;
-
-	for (a = buffer->attachments; a; a = a->next) {
-		if (a->dma_mapped)
-			dma_sync_sg_for_device(a->dev, a->table.sgl,
-					       a->table.nents, dir);
+	mutex_lock(&buffer->lock);
+	list_for_each_entry(a, &buffer->attachments, list) {
+		dma_sync_sg_for_device(a->dev, a->table->sgl, a->table->nents,
+				       direction);
 	}
 
 	return 0;

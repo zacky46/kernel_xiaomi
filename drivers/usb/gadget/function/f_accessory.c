@@ -637,7 +637,20 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 		goto done;
 	}
 
-	len = ALIGN(count, dev->ep_out->maxpacket);
+	if (!dev->rx_req[0]) {
+		pr_warn("acc_read: USB request already handled/freed");
+		r = -EINVAL;
+		goto done;
+	}
+
+	/*
+	 * Calculate the data length by considering termination character.
+	 * Then compansite the difference of rounding up to
+	 * integer multiple of maxpacket size.
+	 */
+	data_length = count;
+	data_length += dev->ep_out->maxpacket - 1;
+	data_length -= data_length % dev->ep_out->maxpacket;
 
 	if (dev->rx_done) {
 		// last req cancelled. try to get it.
@@ -1293,9 +1306,7 @@ static int acc_setup(void)
 	if (ret)
 		goto err_zap_ptr;
 
-	/* _acc_dev must be set before calling usb_gadget_register_driver */
-	_acc_dev = dev;
-
+	kref_init(&ref->kref);
 	return 0;
 
 err_zap_ptr:
